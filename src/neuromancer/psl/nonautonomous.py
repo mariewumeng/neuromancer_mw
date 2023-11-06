@@ -500,6 +500,95 @@ class SwingEquation(ODE):
                  (Pm - Pmax * np.sin(delta) - self.D * domega) / self.M]
         return dx_dt
 
+# The class `Syn_Machine_Order_4` is added by Marie Meng Wu @ 2023-11-6
+# class SwingEquation(ODE):
+class Syn_Machine_Order_4(ODE):
+    """
+    `4th order synchronous machine model from PSAT user manual equations 15.15 and 15.16.
+    States x = [delta, omega, eq', ed']
+    inputs u = [pe, vq, vd]
+    """
+    @property
+    def params(self):
+        # Pm = 0.8
+        # Pmax = 5.0
+        # H = 500.
+        # freq = 60.
+        # ws = 2 * np.pi * freq
+        variables = {'x0': [0, 0, 0, 0]}
+        constants = {'ts': 0.01}
+        parameters = {# 'Pm': Pm,  # Mechanical power
+                      # 'Pmax': Pmax,  # Maximum electrical output
+                      # 'H': H,  # Inertia constant
+                      # 'D': 5.,  # Damping coefficient
+                      # 'freq': freq,  # Base frequency
+                      # 'ws': ws,  # Base angular speed
+                      # 'M': 2 * H / ws  # scaled inertia constant
+                      'D': 0,
+                      'M': 6.02,
+                      'xd': 1.3125,
+                      'xdp': 0.1813,
+                      'Tdop': 5.89,
+                      'xq': 1.2578,
+                      'xqp': 0.25,
+                      'Tqop': 0.6,
+                      'Kw': 0,
+                      'Kp': 0,
+                      'ra': 0,
+                      'xl': 0,
+                      'omega_b': 2 * np.pi * 60,
+
+                      'pm': 0.85,
+                      'vf_star': 1.403
+                       }
+        meta = {}
+        return variables, constants, parameters, meta
+
+    @cast_backend
+    def get_U(self, nsim, signal=None, **signal_kwargs):
+        if signal is not None:
+            return super().get_U(nsim=nsim, signal=signal, **signal_kwargs)
+        """
+        Noisy mechanical power with constant Pmax)
+        """
+        u = step(nsim=nsim, d=3,  min=[0.85, 0.6661, 0.7791] * 0.98, max=[0.85, 0.6661, 0.7791] * 1.02,
+                 randsteps=int(np.ceil(nsim / 200)),
+                 rng=self.rng)
+        return u
+
+    @cast_backend
+    def equations(self, t, x, u):
+        # delta = x[0]
+        # domega = x[1]
+        # Pm = u[0]
+        # Pmax = self.Pmax
+
+        # States x = [delta, omega, eq', ed']
+        delta = x[0]
+        omega = x[1]
+        eqp = x[2]
+        edp = x[3]
+
+        # inputs u = [pe, vq, vd]
+        pe = u[0]
+        vq = u[1]
+        vd = u[2]
+
+        # dx_dt = [self.ws * domega,
+        #          (Pm - Pmax * np.sin(delta) - self.D * domega) / self.M]
+
+        iq = (4*(eqp*self.ra - edp*self.xdp + edp*self.xl - self.ra*vq + vd*self.xdp - vd*self.xl))/(self.xdp - self.xl - 4*self.xdp*self.xl + 4*self.ra^2 + 4*self.xl^2)
+        id = (eqp - vq + 4*edp*self.ra - 4*eqp*self.xl - 4*self.ra*vd + 4*vq*self.xl)/(self.xdp - self.xl - 4*self.xdp*self.xl + 4*self.ra^2 + 4*self.xl^2)
+
+        fs = eqp
+
+        dx_dt = [self.omega_b * (omega - 1),
+                 (self.pm - pe - self.D * (omega - 1) / self.M),
+                 (-fs - (self.xd - self.xdp) * id + self.vf_star) / self.Tdop,
+                 (-edp + (self.xq - self.xqp) * iq) / self.Tqop]
+        
+        return dx_dt
+
 
 class DuffingControl(ODE):
     """
